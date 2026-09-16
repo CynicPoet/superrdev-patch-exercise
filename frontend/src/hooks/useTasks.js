@@ -4,21 +4,30 @@ import { fetchTasks } from '../api';
 export function useTasks(query, status, page, pageSize) {
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Cancel the previous request when inputs change, so a slower stale
+    // response can never overwrite the results for the latest inputs
+    const controller = new AbortController();
     setLoading(true);
+    setError(null);
 
-    fetchTasks({ query, status, page, pageSize })
+    fetchTasks({ query, status, page, pageSize, signal: controller.signal })
       .then((data) => {
+        if (controller.signal.aborted) return;
         setTasks(data.items);
         setTotal(data.total);
         setLoading(false);
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         setError(err.message);
+        setLoading(false);
       });
+
+    return () => controller.abort();
   }, [query, status, page, pageSize]);
 
   return { tasks, total, loading, error };

@@ -57,8 +57,9 @@ public class TaskController {
 
         // long math: (page - 1) * pageSize can overflow int for very large pages
         long start = (long) (page - 1) * pageSize;
-        List<Task> pageResults = (start < allResults.size())
+        List<TaskResponse> pageResults = (start < allResults.size())
                 ? allResults.subList((int) start, (int) Math.min(start + pageSize, allResults.size()))
+                        .stream().map(TaskResponse::from).toList()
                 : Collections.emptyList();
 
         Map<String, Object> response = new LinkedHashMap<>();

@@ -2,8 +2,10 @@ package com.internal.tasktracker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 
@@ -12,6 +14,7 @@ import java.util.*;
 public class TaskController {
 
     private static final Logger log = LoggerFactory.getLogger(TaskController.class);
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final TaskRepository taskRepository;
 
@@ -26,6 +29,12 @@ public class TaskController {
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "10") int pageSize) {
 
+        // Reject bad paging input with 400 instead of failing later with a 500
+        if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "page must be >= 1 and pageSize between 1 and " + MAX_PAGE_SIZE);
+        }
+
         // Normalize query input
         String query = q == null ? "" : q.trim();
         String searchTerm = "%" + query.toLowerCase() + "%";
@@ -33,7 +42,11 @@ public class TaskController {
         // Parse status filter
         String normalizedStatus = null;
         if (status != null && !status.isEmpty()) {
-            normalizedStatus = TaskStatus.valueOf(status.toUpperCase()).name();
+            try {
+                normalizedStatus = TaskStatus.valueOf(status.toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown status filter");
+            }
         }
 
         // Strip control chars (CR/LF, ESC) so user input cannot forge log lines
@@ -42,10 +55,10 @@ public class TaskController {
 
         List<Task> allResults = taskRepository.searchTasks(searchTerm, normalizedStatus);
 
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, allResults.size());
+        // long math: (page - 1) * pageSize can overflow int for very large pages
+        long start = (long) (page - 1) * pageSize;
         List<Task> pageResults = (start < allResults.size())
-                ? allResults.subList(start, end)
+                ? allResults.subList((int) start, (int) Math.min(start + pageSize, allResults.size()))
                 : Collections.emptyList();
 
         Map<String, Object> response = new LinkedHashMap<>();
